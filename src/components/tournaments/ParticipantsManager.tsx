@@ -1,5 +1,7 @@
 "use client"
 
+import { ChangeGroupButton } from "./ChangeGroupButton"
+
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Plus, Trash2, Search } from "lucide-react"
@@ -111,6 +113,11 @@ export function ParticipantsManager({
                   </div>
                   <span className="text-sm text-white truncate">{p.display_name}</span>
                 </div>
+                <ChangeGroupButton
+                  participantId={p.id}
+                  tournamentId={tournamentId}
+                  currentGroup={p.group_name}
+                />
                 <button
                   onClick={() => handleRemove(p.id, p.display_name)}
                   disabled={loading === p.id}

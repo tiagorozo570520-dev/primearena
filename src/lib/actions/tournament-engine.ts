@@ -157,3 +157,97 @@ export async function generateTournamentStructure(params: {
   revalidatePath(`/admin/tournaments/${params.tournamentId}`)
   return { success: true, matchesCreated: result.matches.length }
 }
+
+/**
+ * Regenerate matches keeping current group assignments.
+ * Does NOT reshuffle groups.
+ */
+export async function regenerateMatchesKeepGroups(tournamentId: string): Promise<{
+  success?: boolean
+  error?: string
+}> {
+  const supabase = await createClient()
+
+  const { data: participants } = await supabase
+    .from("tournament_participants")
+    .select("id, display_name, group_name")
+    .eq("tournament_id", tournamentId)
+
+  if (!participants || participants.length === 0) {
+    return { error: "No hay participantes" }
+  }
+
+  // Group by current group_name
+  const byGroup = new Map<string, string[]>()
+  for (const p of participants) {
+    const g = p.group_name || "A"
+    const list = byGroup.get(g) || []
+    list.push(p.id)
+    byGroup.set(g, list)
+  }
+
+  // Delete old matches and standings
+  await supabase.from("matches").delete().eq("tournament_id", tournamentId)
+  await supabase.from("standings").delete().eq("tournament_id", tournamentId)
+
+  // Generate round-robin within each group (two legs)
+  const matches: any[] = []
+  let matchNumber = 1
+  let roundOrder = 1
+
+  for (const [groupName, ids] of byGroup) {
+    // Round-robin pairs
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        // Leg 1
+        matches.push({
+          tournament_id: tournamentId,
+          round_name: `Grupo ${groupName} - Ida`,
+          round_order: roundOrder,
+          match_number: matchNumber++,
+          home_participant_id: ids[i],
+          away_participant_id: ids[j],
+          leg: 1,
+          status: "scheduled",
+        })
+        // Leg 2
+        matches.push({
+          tournament_id: tournamentId,
+          round_name: `Grupo ${groupName} - Vuelta`,
+          round_order: roundOrder,
+          match_number: matchNumber++,
+          home_participant_id: ids[j],
+          away_participant_id: ids[i],
+          leg: 2,
+          status: "scheduled",
+        })
+      }
+    }
+    roundOrder++
+  }
+
+  if (matches.length > 0) {
+    const { error } = await supabase.from("matches").insert(matches)
+    if (error) return { error: error.message }
+  }
+
+  // Recreate standings
+  const standings = participants.map((p) => ({
+    tournament_id: tournamentId,
+    participant_id: p.id,
+    played: 0,
+    won: 0,
+    drawn: 0,
+    lost: 0,
+    goals_for: 0,
+    goals_against: 0,
+    points: 0,
+  }))
+
+  if (standings.length > 0) {
+    await supabase.from("standings").insert(standings)
+  }
+
+  revalidatePath(`/admin/tournaments/${tournamentId}`)
+  return { success: true }
+}

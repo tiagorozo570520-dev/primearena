@@ -331,3 +331,25 @@ export async function getTournamentStandings(tournamentId: string) {
 
   return data || []
 }
+
+export async function setParticipantGroup(
+  participantId: string,
+  tournamentId: string,
+  groupName: string | null
+): Promise<{ success?: boolean; error?: string }> {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from("tournament_participants")
+    .update({ group_name: groupName || null })
+    .eq("id", participantId)
+
+  if (error) {
+    console.error("setParticipantGroup:", error)
+    return { error: error.message || "Error al asignar grupo" }
+  }
+
+  revalidatePath(`/admin/tournaments/${tournamentId}`)
+  revalidatePath(`/admin/tournaments/${tournamentId}/participants`)
+  return { success: true }
+}

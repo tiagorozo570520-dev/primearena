@@ -102,9 +102,9 @@ async function updateStandingsForMatch(
   awayId: string,
   homeScore: number,
   awayScore: number,
-  wasAlreadyFinished: boolean
+  _wasAlreadyFinished: boolean
 ) {
-  // Fast incremental update for the two teams
+  // Fast incremental update
   const { data: rows } = await supabase
     .from("standings")
     .select("id, participant_id, played, won, drawn, lost, goals_for, goals_against, points")
@@ -341,6 +341,83 @@ export async function clearMatchResult(
       true
     )
   }
+
+  revalidatePath(`/admin/tournaments/${tournamentId}`)
+  return { success: true }
+}
+
+export async function recalculateStandings(tournamentId: string): Promise<{
+  success?: boolean
+  error?: string
+}> {
+  const supabase = await createClient()
+
+  const { data: finished } = await supabase
+    .from("matches")
+    .select("home_participant_id, away_participant_id, home_score, away_score")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "finished")
+    .not("home_participant_id", "is", null)
+    .not("away_participant_id", "is", null)
+
+  const { data: standings } = await supabase
+    .from("standings")
+    .select("id, participant_id")
+    .eq("tournament_id", tournamentId)
+
+  if (!standings || standings.length === 0) {
+    return { error: "No hay tabla para recalcular" }
+  }
+
+  const stats = new Map<string, {
+    played: number; won: number; drawn: number; lost: number;
+    goals_for: number; goals_against: number; points: number
+  }>()
+
+  for (const s of standings) {
+    stats.set(s.participant_id, {
+      played: 0, won: 0, drawn: 0, lost: 0,
+      goals_for: 0, goals_against: 0, points: 0,
+    })
+  }
+
+  if (finished) {
+    for (const m of finished) {
+      const home = stats.get(m.home_participant_id)
+      const away = stats.get(m.away_participant_id)
+      if (!home || !away || m.home_score == null || m.away_score == null) continue
+
+      home.played++
+      away.played++
+      home.goals_for += m.home_score
+      home.goals_against += m.away_score
+      away.goals_for += m.away_score
+      away.goals_against += m.home_score
+
+      if (m.home_score > m.away_score) {
+        home.won++
+        home.points += 3
+        away.lost++
+      } else if (m.away_score > m.home_score) {
+        away.won++
+        away.points += 3
+        home.lost++
+      } else {
+        home.drawn++
+        away.drawn++
+        home.points += 1
+        away.points += 1
+      }
+    }
+  }
+
+  await Promise.all(
+    standings.map((s) => {
+      const st = stats.get(s.participant_id)
+      if (!st) return Promise.resolve()
+      return supabase.from("standings").update(st).eq("id", s.id)
+    })
+  )
 
   revalidatePath(`/admin/tournaments/${tournamentId}`)
   return { success: true }

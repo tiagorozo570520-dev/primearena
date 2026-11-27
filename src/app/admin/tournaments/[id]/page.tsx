@@ -11,6 +11,8 @@ import { GenerateStructureButton } from "@/components/tournaments/GenerateStruct
 import { FinishTournamentForm } from "@/components/tournaments/FinishTournamentForm"
 import { CloseGroupStageButton } from "@/components/tournaments/CloseGroupStageButton"
 import { CloseSeasonButton } from "@/components/tournaments/CloseSeasonButton"
+import { RegenerateKeepGroupsButton } from "@/components/tournaments/RegenerateKeepGroupsButton"
+import { RecalculateStandingsButton } from "@/components/tournaments/RecalculateStandingsButton"
 import { BracketView } from "@/components/tournaments/BracketView"
 import { MatchListWithSearch } from "@/components/tournaments/MatchListWithSearch"
 
@@ -137,6 +139,11 @@ export default async function TournamentDetailPage({ params }: PageProps) {
             competitionType={tournament.competition_type}
             participantsCount={participants.length}
           />
+          {(tournament.competition_type === "prime_league_d1" ||
+            tournament.competition_type === "prime_league_d2") && (
+            <RegenerateKeepGroupsButton tournamentId={id} />
+          )}
+          <RecalculateStandingsButton tournamentId={id} />
           {(tournament.competition_type === "prime_league_d1" ||
             tournament.competition_type === "prime_league_d2" ||
             tournament.competition_type === "prime_champions") && (
